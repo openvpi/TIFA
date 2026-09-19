@@ -74,9 +74,7 @@ class G2PPipeline:
                     result.language = resolved
                 # Keep even an empty output block so later converters cannot
                 # join input tokens across a run that was already handled.
-                next_states.append(_TokenState(
-                    text="".join(s.text for s in run_states), results=results,
-                ))
+                next_states.append(_TokenState(text="", results=results))
                 i = j
             states = next_states
 

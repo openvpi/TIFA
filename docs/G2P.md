@@ -100,8 +100,7 @@ g2p/
     ├── paradigm.py     # LexiconConverter, PronunciationScriptConverter
     ├── dictionary.py   # load_pronunciation_dict(), DictionaryConverter, PronunciationScriptDictionaryConverter
     ├── chinese.py      # MandarinConverter (id=chinese-pinyin), CantoneseConverter (id=cantonese-jyutping)
-    ├── japanese.py     # JapaneseKanaConverter (id=japanese-kana) — cpp-kana-aligned
-    ├── japanese_mecab.py # JapaneseMecabConverter (id=japanese-mecab) — UniDic readings → existing kana converter
+    ├── japanese.py     # JapaneseKanaConverter (id=japanese-kana), JapaneseMecabConverter (id=japanese-mecab)
     ├── lstm.py         # LSTMConverter (id=lstm) — ONNX encoder-decoder OOV
     ├── simple.py       # PassthroughConverter, CharPhonemeConverter
     └── cpp_pinyin/     # PinyinEngine + dicts (mandarin, cantonese)
@@ -169,57 +168,29 @@ Key behaviors:
 
 ### Japanese MeCab converter
 
-`japanese-mecab` supports the language tags `ja` and `jpn`. It joins each contiguous
-claimed run of kanji and kana before MeCab segmentation, keeping complete word
-forms such as `駆ける` available to the analyzer. Each MeCab word becomes one
-`G2PWord`, even when the input tokenizer split it into several tokens.
+`japanese-mecab` (`ja`, `jpn`) segments kanji/kana text with MeCab and enumerates
+UniDic pronunciation candidates for each word. It reuses `JapaneseKanaConverter`
+to produce complete paths with romaji group labels.
 
-For each segmented word, it calls `nbestToNodeList(word, nbest)`, retains analyses
-with exactly one node whose surface matches the entire word, and deduplicates
-their `pron` fields. The candidates are separate readings, rather than a single
-context-dependent choice. `CJKTokenizer` and `JapaneseKanaConverter` then convert
-each candidate into complete whole-word paths, preserving dictionary alternatives
-and the existing romaji group scripts. No offline reading table is required.
+Requires optional dependencies, imported on first conversion:
+
+```shell
+python -m pip install "fugashi>=1.3,<2" "unidic>=1.1,<2"
+```
 
 Parameters:
 
 - `dict_path: str` — required romaji-to-phoneme dictionary.
 - `nbest: int = 32` — number of MeCab analyses to examine for each word.
-- `double_written_sokuon: bool = False` — forwarded to the kana converter.
+- `double_written_sokuon: bool = False` — duplicate the following consonant for
+  gemination, combining adjacent words when needed.
 - `unidic_dir: str | None = None` — optional full UniDic directory; defaults to
   the installed `unidic` package's dictionary.
 
-Install the Python packages and the full UniDic dictionary in the same Python
-environment used to run the project:
-
-```shell
-python -m pip install "fugashi>=1.3,<2" "unidic>=1.1,<2"
-python -m unidic download
-```
-
-The dictionary data needs this separate download after package installation.
-See the [fugashi installation guide](https://github.com/polm/fugashi#installing-a-dictionary)
-and [UniDic package documentation](https://github.com/polm/unidic-py).
-The tagger and optional imports load on the first claimed Japanese conversion;
-other converters can run without initializing MeCab.
-
-Existing kana behavior also applies to MeCab's `pron`: `学校` has pronunciation
-`ガッコー`, producing `g a cl k o` with the reference phoneme dictionary. The `ー`
-mark remains an empty script; no long-vowel normalization is performed. Any word
-without a usable UniDic `pron` raises `G2PConversionError`; no reading is inferred
-from the word's spelling.
-
-ASCII romaji, ASCII digits, and full-width digits are not claimed. Keep the
-following Japanese dictionary converter for romaji inputs, including the GTSinger Japanese index
-files whose `text` already contains romaji phoneme sequences. Numeric readings
-such as ASCII `10` and full-width `８` are unsupported by this converter; they need
-another converter or explicit preprocessing.
-
-The reference config keeps Chinese converters first, so shared kanji can be
-claimed as Chinese when no language filter is provided. Use
-`pipeline.convert(text, languages=["ja"])` or `languages=["jpn"]` for Japanese
-text. A language filter is needed to resolve this ambiguity; script alone cannot
-distinguish Chinese hanzi from Japanese kanji.
+The default UniDic dictionary downloads automatically on first use if missing;
+a custom `unidic_dir` must already be installed. Use `languages=["ja"]` or
+`["jpn"]` to avoid Chinese converters claiming kanji in the reference config.
+Romaji uses the dictionary fallback; numeric readings are unsupported.
 
 ### LSTM Converter
 

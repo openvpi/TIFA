@@ -5,7 +5,7 @@ click
 colorednoise
 dask
 einops>=0.7.0
-fugashi>=1.3,<2
+filelock
 h5py
 librosa>=0.10.0
 lightning
@@ -27,5 +27,3 @@ tensorboardX
 textgrid
 torchmetrics
 tqdm
-# Full Japanese dictionary data requires a separate download: python -m unidic download
-unidic>=1.1,<2

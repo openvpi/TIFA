@@ -1,8 +1,13 @@
-"""Japanese kana G2P converter  --  kana -> romaji -> phonemes.
-"""
+"""Japanese kana and MeCab G2P converters with shared pronunciation rules."""
+
+from itertools import product
+from pathlib import Path
+
+from filelock import FileLock
 
 from g2p.registry import converter
-from .base import G2PGroup, G2PPath
+from g2p.tokenizers.cjk import CJKTokenizer
+from .base import Converter, G2PConversionError, G2PGroup, G2PPath, G2PReading, G2PWord
 from .dictionary import PronunciationScriptDictionaryConverter
 
 # Small kana used in yoon digraphs and other digraphs.
@@ -185,3 +190,169 @@ class JapaneseKanaConverter(PronunciationScriptDictionaryConverter):
             romaji_list = _apply_sokuon(romaji_list)
 
         return [[r] for r in romaji_list]
+
+
+def _is_japanese_char(char: str) -> bool:
+    cp = ord(char)
+    return (
+        _is_kana(char)
+        or char in "々〆〇"
+        or 0x3400 <= cp <= 0x4DBF
+        or 0x4E00 <= cp <= 0x9FFF
+        or 0xF900 <= cp <= 0xFAFF
+        or 0x20000 <= cp <= 0x2FA1F
+        or 0x30000 <= cp <= 0x323AF
+    )
+
+
+@converter(id="japanese-mecab", language="ja,jpn")
+class JapaneseMecabConverter(Converter):
+    """Segment full Japanese word forms and enumerate whole-word readings.
+
+    MeCab supplies only kana pronunciations (UniDic's ``pron`` field).
+    Romaji, phoneme groups, dictionary alternatives and long vowels are
+    handled by :class:`JapaneseKanaConverter` without additional rules.
+    The full PyPI ``unidic`` dictionary is loaded on first conversion and
+    downloaded automatically if it has not been installed yet.
+    """
+
+    def __init__(
+        self,
+        dict_path: str,
+        *,
+        nbest: int = 32,
+        double_written_sokuon: bool = False,
+        unidic_dir: str | None = None,
+    ) -> None:
+        if isinstance(nbest, bool) or not isinstance(nbest, int) or nbest < 1:
+            raise ValueError("nbest must be a positive integer.")
+        self._nbest = nbest
+        self._double_written_sokuon = double_written_sokuon
+        self._unidic_dir = unidic_dir
+        self._tagger = None
+        self._tokenizer = CJKTokenizer()
+        self._kana = JapaneseKanaConverter(
+            dict_path=dict_path, double_written_sokuon=double_written_sokuon,
+        )
+
+    def __getstate__(self):
+        # Binarization and data loaders use spawned worker processes. MeCab's
+        # native tagger cannot be pickled; each worker creates its own instance.
+        state = self.__dict__.copy()
+        state["_tagger"] = None
+        return state
+
+    def claim(self, token: str) -> bool:
+        # In particular, never take ASCII romaji/phoneme input from the
+        # Japanese dictionary converter used by existing training datasets.
+        return bool(token) and all(_is_japanese_char(char) for char in token)
+
+    def _get_tagger(self):
+        if self._tagger is not None:
+            return self._tagger
+        try:
+            import fugashi
+            import unidic
+            from unidic.download import download_version
+        except ModuleNotFoundError as exc:
+            if exc.name not in ("fugashi", "unidic"):
+                raise
+            raise ImportError(
+                "japanese-mecab requires optional dependencies. Install them with: "
+                'python -m pip install "fugashi>=1.3,<2" "unidic>=1.1,<2"'
+            ) from exc
+        if self._unidic_dir is None:
+            dicdir = Path(unidic.DICDIR)
+            required = (dicdir / "sys.dic", dicdir / "mecabrc")
+            if not all(path.is_file() for path in required):
+                # Serialize first-use downloads across spawned workers.
+                with FileLock(str(dicdir.parent / "download.lock")):
+                    if not all(path.is_file() for path in required):
+                        download_version()
+        else:
+            dicdir = Path(self._unidic_dir)
+        # Explicit paths avoid system MeCab dictionaries and support spaces
+        # in Windows environment paths.
+        dicdir = dicdir.resolve()
+        self._tagger = fugashi.Tagger(
+            f'-r "{(dicdir / "mecabrc").as_posix()}" -d "{dicdir.as_posix()}"'
+        )
+        return self._tagger
+
+    def _pronunciations(self, word: str) -> list[str]:
+        readings: list[str] = []
+        seen: set[str] = set()
+        for nodes in self._get_tagger().nbestToNodeList(word, self._nbest):
+            if len(nodes) != 1 or nodes[0].surface != word:
+                continue
+            pron = nodes[0].feature.pron
+            if not pron or pron in ("*", "-") or pron in seen:
+                continue
+            seen.add(pron)
+            readings.append(pron)
+        if not readings and word and all(_is_kana(char) for char in word):
+            readings.append(word)
+        return readings
+
+    def _reading(self, kana: str) -> G2PReading:
+        kana_words = self._kana.convert(self._tokenizer.tokenize([kana]))
+        alternatives = [
+            [path for reading in word.readings for path in reading.paths]
+            for word in kana_words
+        ]
+        # Keep each candidate as a complete word path. Per-kana dictionary
+        # alternatives combine within this reading, not across readings.
+        paths = []
+        seen = set()
+        for parts in product(*alternatives):
+            path = [group for part in parts for group in part]
+            key = tuple((group.script, tuple(group.phonemes)) for group in path)
+            if key not in seen:
+                seen.add(key)
+                paths.append(path)
+        return G2PReading(paths=paths)
+
+    def convert(self, words: list[str]) -> list[G2PWord]:
+        text = "".join(words)
+        if not text:
+            return []
+        # Snapshot surfaces before N-best calls replace MeCab's lattice.
+        surfaces: list[str] = []
+        for node in self._get_tagger()(text):
+            surface = node.surface
+            # Keep kana digraphs intact even if MeCab splits them.
+            if (
+                surfaces
+                and surface[0] in _SMALL_KANA
+                and all(_is_kana(char) for char in surfaces[-1] + surface)
+                and _kata_to_hira(surfaces[-1][-1] + surface[0]) in _KANA_TO_ROMAJI
+            ):
+                surfaces[-1] += surface
+            else:
+                surfaces.append(surface)
+
+        word_readings: list[tuple[str, list[str]]] = []
+        for surface in surfaces:
+            pronunciations = self._pronunciations(surface)
+            if not pronunciations:
+                raise G2PConversionError([surface])
+            if (
+                word_readings
+                and self._double_written_sokuon
+                and any(_kata_to_hira(pron).rstrip("ー゜").endswith("っ")
+                        for pron in word_readings[-1][1])
+            ):
+                # Keep gemination and the following reading in one path choice.
+                previous, previous_readings = word_readings[-1]
+                word_readings[-1] = (
+                    previous + surface,
+                    list(dict.fromkeys(left + right for left, right in product(
+                        previous_readings, pronunciations,
+                    ))),
+                )
+            else:
+                word_readings.append((surface, pronunciations))
+        return [
+            G2PWord(text=surface, readings=[self._reading(pron) for pron in pronunciations])
+            for surface, pronunciations in word_readings
+        ]
