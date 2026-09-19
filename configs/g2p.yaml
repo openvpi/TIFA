@@ -17,14 +17,15 @@ binarizer:
         language: zh
         kwargs:
           dict_path: "dictionaries/ds-zh-pinyin-lite.txt"
-      # Japanese: kana
-      - id: japanese-kana
+      # Japanese: kanji + kana (use languages=["ja"] or ["jpn"] for Japanese text)
+      - id: japanese-mecab
         kwargs:
           dict_path: "dictionaries/japanese_dict_full.txt"
+          nbest: 32
           double_written_sokuon: false
       # Japanese: romaji
       - id: dictionary
-        language: ja
+        language: ja,jpn
         kwargs:
           dict_path: "dictionaries/japanese_dict_full.txt"
       # English: dictionary + lstm

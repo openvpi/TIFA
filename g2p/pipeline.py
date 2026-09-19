@@ -12,9 +12,10 @@ from .tokenizers.base import Tokenizer
 
 @dataclass
 class _TokenState:
+    """An unconverted token or the complete output of a converted run."""
+
     text: str
-    index: int
-    result: G2PWord | None = None
+    results: list[G2PWord] | None = None
 
 
 class G2PPipeline:
@@ -47,35 +48,40 @@ class G2PPipeline:
         for tok in self._tokenizers:
             tokens = tok.tokenize(tokens)
 
-        states = [_TokenState(text=t, index=i) for i, t in enumerate(tokens)]
+        states = [_TokenState(text=t) for t in tokens]
         for converter in active:
-            unconverted = [s for s in states if s.result is None]
+            next_states: list[_TokenState] = []
             i = 0
-            while i < len(unconverted):
-                if not converter.claim(unconverted[i].text):
+            while i < len(states):
+                if states[i].results is not None or not converter.claim(states[i].text):
+                    next_states.append(states[i])
                     i += 1
                     continue
                 j = i + 1
-                while j < len(unconverted) and converter.claim(unconverted[j].text):
+                while (
+                    j < len(states)
+                    and states[j].results is None
+                    and converter.claim(states[j].text)
+                ):
                     j += 1
-                run_states = unconverted[i:j]
+                run_states = states[i:j]
                 run_texts = [s.text for s in run_states]
                 for pp in converter.preprocessors():
                     run_texts = pp.process(run_texts)
-                    if len(run_texts) != len(run_states):
-                        raise ValueError("Converter preprocessors must preserve word count.")
                 results = converter.convert(run_texts)
-                if len(results) != len(run_states):
-                    raise ValueError("Converters must return exactly one G2PWord per input word.")
                 resolved = resolve_language(converter.language, language_set)
-                for state, result in zip(run_states, results):
-                    result.text = state.text
+                for result in results:
                     result.language = resolved
-                    state.result = result
+                # Keep even an empty output block so later converters cannot
+                # join input tokens across a run that was already handled.
+                next_states.append(_TokenState(
+                    text="".join(s.text for s in run_states), results=results,
+                ))
                 i = j
+            states = next_states
 
-        unconverted = [s for s in states if s.result is None]
+        unconverted = [s for s in states if s.results is None]
         if unconverted:
             raise G2PConversionError([s.text for s in unconverted])
 
-        return [s.result for s in states]
+        return [word for s in states if s.results is not None for word in s.results]

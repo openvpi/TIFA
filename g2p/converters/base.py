@@ -25,7 +25,10 @@ class G2PReading:
 
 @dataclass
 class G2PWord:
-    """One semantic tokenizer word, with its alternative readings."""
+    """One converter-defined output word, with its alternative readings.
+
+    Its text and boundaries may differ from the input tokenizer's words.
+    """
 
     text: str
     language: str | None = None
@@ -41,10 +44,16 @@ class Converter(ABC):
 
     # noinspection PyMethodMayBeStatic
     def preprocessors(self) -> list[Preprocessor]:
+        """Transform a claimed input run; word text and count may change."""
         return []
 
     @abstractmethod
     def convert(self, words: list[str]) -> list[G2PWord]:
+        """Convert a claimed run into zero or more output words.
+
+        The pipeline preserves output text and order and sets each word's
+        language. Implementations may merge, split, rewrite, or omit inputs.
+        """
         ...
 
 
