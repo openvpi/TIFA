@@ -111,3 +111,43 @@ All tensor dimensions must be positive. Spectrogram inputs must satisfy `L > cei
 | best_words | mid | int64 | [B,P] | Word IDs after compaction; 0 for padding |
 | best_groups | mid | int64 | [B,P] | Globally consecutive group IDs after compaction; 0 for padding. Gaps between phones in the same group are disallowed |
 | frame_lengths / token_lengths | mid | int64 | [B] | Host counts of maskT / maskN passed to external Viterbi decoding |
+
+## Tifa application of dataset-tools
+
+[Tifa](https://github.com/openvpi/dataset-tools) is a host implementation of the pipeline above with a graphical interface, written in C++ with ONNX Runtime. It aligns one waveform against the text file next to it and writes a Praat TextGrid with `words`, `phones` and `texts` tiers. Its `util` folder follows this document for every host box of the flowchart, including the whole-word candidate DP of [select_scored_paths](inference/scoring.py) and the Viterbi decoding of [decode_alignment_flat](modules/decoding.py).
+
+### Build a package
+
+```bash
+python deploy_dataset_tools.py -m [model-path] -o [save-dir]
+```
+
+The command exports the five ONNX graphs, `config.json` and `vocabulary.json` with [deploy_model](deployment/api.py) and copies the G2P resources beside them:
+
+```
+[save-dir]/
+├── model/
+│   └── Tifa/                     # config.json, vocabulary.json and five *.onnx
+└── dict/                         # G2P dictionaries
+    ├── ds-zh-pinyin-lite.txt
+    ├── jyutping_dict.txt
+    ├── japanese_dict_full.txt
+    ├── ds_cmudict-07b.txt
+    └── LstmG2p-Eng/              # only when assets/LstmG2p-Eng exists
+```
+
+Copy `model/Tifa` to `<dataset-tools>/bin/model/Tifa` and the files of `dict` into `<dataset-tools>/bin/dict`. That folder is created by the build of the application and already contains the `mandarin` and `cantonese` folders of cpp-pinyin; the application reads the dictionaries from `<app_dir>/dict` unless another folder is selected in the window.
+
+### Front end
+
+The host has no MeCab and therefore no Japanese morphological analysis. Kana is converted with the shared `japanese_dict_full.txt`, while a kanji reading is reported as unsupported instead of being aligned with wrong phonemes. Mandarin and Cantonese use cpp-pinyin with `ds-zh-pinyin-lite.txt` and `jyutping_dict.txt`, as in the Python pipeline. English uses `ds_cmudict-07b.txt` and falls back to `LstmG2p-Eng` when it is present.
+
+### Options
+
+| Window option | Pipeline equivalent |
+|:--|:--|
+| Language | Language filtering of the G2P converters |
+| Unknown phonemes: fail the file | `oov_handling=raise`; the file is reported as failed |
+| Unknown phonemes: drop the pronunciation | `oov_handling=force`; the pronunciation is removed and the rest of the text is aligned |
+| Skipped tokens | TextGrid policy for tokens that Viterbi decoding left without a frame: fail the file, omit them, or preserve them as a zero-length interval |
+| Skip penalty | `skip_penalty` of [decode_alignment_flat](modules/decoding.py), default 0.5 |

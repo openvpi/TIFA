@@ -441,6 +441,16 @@ Keep the matching `config.yaml` and `vocabulary.json` beside the model. By defau
 
 We don't provide a standalone ONNX inference pipeline in this repository. See the [documentation](ONNX.md) for the workflow, tensor interfaces and steps to implement in the host application.
 
+### Package for the dataset-tools application
+
+[dataset-tools](https://github.com/openvpi/dataset-tools) contains the **Tifa** application, a forced aligner with the same pipeline as this repository and a graphical interface. Build a package it can load with:
+
+```bash
+python deploy_dataset_tools.py -m [model-path] -o [save-dir]
+```
+
+The command exports one model as before and copies the pronunciation dictionaries, and the English out-of-vocabulary model when `assets/LstmG2p-Eng` is available, into the package. See the [documentation](ONNX.md#tifa-application-of-dataset-tools) for the layout and the installation steps.
+
 ## Integration
 
 The repository exposes APIs for downstream applications:
