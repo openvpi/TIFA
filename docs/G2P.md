@@ -22,11 +22,11 @@ included under `dictionaries/`:
 Install the optional backends needed by your pipeline:
 
 ```bash
-pip install "g2pflow[ja]>=0.1.0,<0.2.0"    # Japanese MeCab and UniDic
-pip install "g2pflow[lstm]>=0.1.0,<0.2.0"  # English ONNX inference
+pip install "g2pflow[ja]>=0.3.0,<0.4.0"    # Japanese MeCab and UniDic
+pip install "g2pflow[lstm]>=0.3.0,<0.4.0"  # English ONNX inference
 ```
 
-Use `pip install "g2pflow[all]>=0.1.0,<0.2.0"` to install both backends for the
+Use `pip install "g2pflow[all]>=0.3.0,<0.4.0"` to install both backends for the
 default configuration. Language filtering does not prevent configured converters
 from being constructed, so their dictionary and model metadata files must exist.
 
@@ -111,6 +111,20 @@ are resolved relative to the pipeline's `root_path`:
 For example, `dict_path: "@dictionaries/en.txt"` in an embedded pipeline refers
 to `dictionaries/en.txt` under the model directory.
 
+## PFML inference
+
+Inference selects the first existing same-basename transcript in this order:
+`.pfml`, `.txt`, `.lab`. Only `.pfml` is parsed as PFML;
+the other two formats remain plain text. An empty or invalid selected file
+skips the sample with a diagnostic instead of falling back to another file.
+Preprocessing and binarization do not interpret PFML or scan for `.pfml` files.
+
+The selected `-l`/`-L` tags are passed to g2pflow as its language filter.
+
+For PFML syntax, semantics and examples, see the
+[PFML 1.0 reference](https://github.com/openvpi/g2pflow/blob/v0.3.0/docs/pfml.md)
+in the g2pflow documentation.
+
 ## Local G2P plugins
 
 Place custom preprocessors and converters in [`plugins/g2p/`](../plugins/g2p/).
@@ -145,8 +159,8 @@ g2pflow returns `G2PWord` objects containing readings, complete pronunciation
 paths and groups with scripts and phonemes. TIFA's
 [`lib/g2p_encoding.py`](../lib/g2p_encoding.py) converts those paths into numeric
 grids and retains candidate order, word ownership, group boundaries and labels.
-`paths=[]` means no candidates; `paths=[[]]` contains one empty pronunciation.
-The candidate mask preserves that distinction.
+g2pflow removes silent branches from conversion results and reports incomplete
+candidate trees as conversion failures.
 
 `Language.ANY`, used by `passthrough`, defers language selection to vocabulary
 encoding. TIFA tries the supplied languages in order, with existing bare and

@@ -223,7 +223,7 @@ def main():
 )
 @shared_options
 def supervised(**kwargs):
-    """Supervised forced alignment inference."""
+    """Align audio with same-basename transcripts: .pfml, then .txt, then .lab."""
     _run_inference(ConfigurationScope.FA, **kwargs)
 
 

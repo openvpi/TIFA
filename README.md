@@ -50,17 +50,19 @@ Full list: [releases](https://github.com/openvpi/TIFA/releases)
 
 ### Prepare audio and text
 
-Each audio file must have a UTF-8 transcript with the same basename. The script looks for `.txt` first, then `.lab`:
+Each audio file must have a UTF-8 transcript with the same basename. The script looks for `.pfml` first, then `.txt`, then `.lab`:
 
 ```text
 path/to/audio/
 ├── sample1.wav
-├── sample1.txt
-├── sample2.flac
-└── sample2.lab
+├── sample1.pfml
+├── sample2.wav
+├── sample2.txt
+├── sample3.flac
+└── sample3.lab
 ```
 
-Put the spoken text or lyrics in each transcript. Samples with missing or empty transcripts are skipped.
+Put the spoken text or lyrics in `.txt` or `.lab`. Use `.pfml` for language scopes, fixed words or explicit pronunciation candidates; see [PFML inference](docs/G2P.md#pfml-inference). Only `.pfml` files are parsed as markup. Samples with missing or empty transcripts, or invalid PFML, are skipped without falling back to a lower-priority file. PFML is supported for inference only; binarization still reads plain text from `index.csv`.
 
 The model directory must contain its matching `config.yaml` and `vocabulary.json`:
 
@@ -139,7 +141,7 @@ Each TextGrid contains three tiers in this order:
 | `words`  | Pronunciation scripts, such as pinyin or romaji, from the selected pronunciation path. | Span the phonemes in each pronunciation group.     |
 | `phones` | Individual phoneme symbols from the selected pronunciation path.                       | Predicted phoneme boundaries.                      |
 
-A semantic word may contain several pronunciation groups, so `texts` and `words` can have different interval counts. Their segmentation follows the G2P converter.
+A semantic word may contain several pronunciation groups, so `texts` and `words` can have different interval counts. Their segmentation follows the G2P result, including word and group boundaries supplied by PFML.
 
 For example, Japanese input `猫` can be converted into the pronunciation groups `ne` and `ko`, with phonemes `n e k o`. With `-l ja`, an illustrative alignment would look like this:
 

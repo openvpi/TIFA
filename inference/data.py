@@ -20,11 +20,12 @@ def _skip(identifier: str, reason: str) -> dict[str, Any]:
 
 
 class AudioTextDataset(torch.utils.data.Dataset):
-    """Pairs audio files with text files for forced alignment inference.
+    """Pairs audio with PFML or plain text for forced alignment inference.
 
-    Takes a filemap ``{identifier: audio_path}``.  In ``__getitem__``
-    the paired ``.txt`` file is located alongside the audio and G2P
-    conversion produces complete word-candidate grids.
+    Takes a filemap ``{identifier: audio_path}``. Transcripts are selected
+    in ``.pfml``, ``.txt``, ``.lab`` order beside each audio file.
+    ``language`` filters G2P languages. Conversion produces complete
+    candidate grids.
     """
 
     def __init__(
@@ -68,10 +69,11 @@ class AudioTextDataset(torch.utils.data.Dataset):
         g2p_pipeline = self._get_g2p()
         audio_path, identifier = self.items[idx]
 
-        text_path = audio_path.with_suffix(".txt")
-        if not text_path.is_file():
-            text_path = audio_path.with_suffix(".lab")
-        if not text_path.is_file():
+        for suffix in (".pfml", ".txt", ".lab"):
+            text_path = audio_path.with_suffix(suffix)
+            if text_path.is_file():
+                break
+        else:
             return _skip(identifier, "No paired text file")
 
         with open(text_path, "r", encoding="utf8") as f:
@@ -80,9 +82,14 @@ class AudioTextDataset(torch.utils.data.Dataset):
             return _skip(identifier, "Empty text")
 
         try:
-            g2p_words = g2p_pipeline.convert(
-                text, languages=self.language,
-            )
+            if text_path.suffix == ".pfml":
+                g2p_words = g2p_pipeline.convert_pfml(
+                    text, languages=self.language,
+                )
+            else:
+                g2p_words = g2p_pipeline.convert(
+                    text, languages=self.language,
+                )
         except Exception as e:
             return _skip(identifier, f"G2P failed: {e}")
 
