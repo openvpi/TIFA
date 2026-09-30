@@ -155,6 +155,26 @@ All three tiers share the same timeline. The word `猫` spans both `ne` and `ko`
 
 The `-l ja` option removes `ja/` from phoneme labels in this example. Other language prefixes remain in mixed-language output. Zero-width phoneme intervals are omitted by default; use `--skip-handling` to change this behavior.
 
+With `--pfml`, inference also writes a same-basename `.pfml` beside each TextGrid,
+preserving the directory structure under `--output-dir`. It contains the selected
+pronunciation for each retained word, with the same groups and phones after
+`--skip-handling`. PFML keeps full phoneme names, including language prefixes,
+so it can be reused as an inference transcript. It does not contain timings or
+unselected pronunciation candidates; see the
+[PFML reference](https://github.com/openvpi/g2pflow/blob/v0.3.0/docs/pfml.md).
+
+```bash
+python infer.py path/to/audio/ -m path/to/model.pt -l zh -o path/to/output/ --pfml
+```
+
+`--pfml` requires an explicit `--output-dir` different from the input file's
+directory. In directory mode, the input and output trees must not overlap
+(including parent/child directories), so exported PFML cannot become input on a
+later run.
+Existing TextGrid and PFML files in the output directory are overwritten.
+Without `--pfml`, output remains TextGrid only (plus any requested plots or
+statistics).
+
 ### Statistics
 
 With `--stat`, inference saves `scores.json` and `diagnosis.json` together under `statistics/` in the output directory, along with metric histograms and scatter plots against sample length. No statistics are written if there are no diagnostic records.

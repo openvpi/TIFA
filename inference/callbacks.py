@@ -1,6 +1,7 @@
 import json
 import pathlib
 import re
+from itertools import groupby
 from typing import Any
 
 import lightning.pytorch.callbacks
@@ -8,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import textgrid
 import torch
+from g2pflow import G2PGroup, G2PReading, G2PWord, to_pfml
 from lightning_utilities.core.rank_zero import rank_zero_only
 from torch import nn
 
@@ -116,7 +118,7 @@ def _preserve_skipped_spans(
 
 
 class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
-    """Writes 3-tier TextGrid files from forced alignment results.
+    """Writes 3-tier TextGrid files and optional PFML from alignment results.
 
     Tiers:
     - texts: semantic word intervals with G2P word text
@@ -124,7 +126,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
     - phones: intervals from decoded spans, labels from G2P output
 
     Expects spans and duration in frames; converts to seconds via
-    ``timestep``.
+    ``timestep``. PFML retains full phoneme names after skip handling.
     """
 
     def __init__(
@@ -133,12 +135,14 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
             language: str | None = None,
             timestep: float = 1.0,
             skip_handling: str = "omit",
+            save_pfml: bool = False,
     ):
         super().__init__()
         self.output_dir = pathlib.Path(output_dir)
         self.language = language
         self.timestep = timestep
         self.skip_handling = skip_handling
+        self.save_pfml = save_pfml
 
     def on_predict_batch_end(
             self,
@@ -155,6 +159,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
             groups = result["groups"].tolist()  # Selected pronunciation groups, 1-based
             spans = (result["spans"].float() * timestep).tolist()  # frames -> seconds
             phonemes = result["phonemes"]
+            pfml_phonemes = phonemes
             if self.language:
                 prefix = f"{self.language}/"
                 phonemes = [
@@ -197,6 +202,8 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
                         continue
                     spans = [spans[i] for i in keep]
                     phonemes = [phonemes[i] for i in keep]
+                    if self.save_pfml:
+                        pfml_phonemes = [pfml_phonemes[i] for i in keep]
                     groups = [groups[i] for i in keep]
                     words = [words[i] for i in keep]
                     N = len(spans)
@@ -243,7 +250,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
                     tier.add(onset, offset, label)
                 tg.append(tier)
 
-            # Step 6: append phones and write the TextGrid.
+            # Step 6: append phones and write the output files.
             phones_tier = textgrid.IntervalTier("phones", 0, total_duration)
             for onset, offset, label in phone_intervals:
                 phones_tier.add(onset, offset, label)
@@ -251,6 +258,25 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
 
             output_path = self.output_dir / f"{identifier}.TextGrid"
             output_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.save_pfml:
+                pfml_words = []
+                for word_id, word_items in groupby(
+                    zip(words, groups, pfml_phonemes), key=lambda item: item[0],
+                ):
+                    path = [
+                        G2PGroup(
+                            script=group_scripts[group_id - 1],
+                            phonemes=[phone for _, _, phone in group_items],
+                        )
+                        for group_id, group_items in groupby(word_items, key=lambda item: item[1])
+                    ]
+                    pfml_words.append(G2PWord(
+                        text=result["texts"][word_id - 1],
+                        readings=[G2PReading(paths=[path])],
+                    ))
+                pfml_source = to_pfml(pfml_words)
+                with output_path.with_suffix(".pfml").open("w", encoding="utf8") as f:
+                    f.write(pfml_source + "\n")
             tg.write(str(output_path))
 
 

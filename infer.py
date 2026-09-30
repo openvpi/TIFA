@@ -96,6 +96,11 @@ def shared_options(func):
             help="Pronunciation unit used for MLM scoring.",
         ),
         click.option(
+            "--pfml", is_flag=True,
+            help="Save aligned pronunciations as PFML next to TextGrid output. "
+                 "Requires a separate --output-dir.",
+        ),
+        click.option(
             "--stat", is_flag=True,
             help="Save statistic plots and diagnosis JSON to <output-dir>/statistics/.",
         ),
@@ -137,6 +142,7 @@ def _run_inference(
         skip_handling: str,
         skip_penalty: float = 0.5,
         score_unit: str = "levenshtein",
+        pfml: bool = False,
         stat: bool = False,
         plot: bool = False,
 ):
@@ -152,8 +158,21 @@ def _run_inference(
     g2p_languages = list(dict.fromkeys(g2p_languages))
 
     filemap = _parse_filemap(path, input_formats)
+    input_is_dir = path.is_dir()
+    input_dir = path if input_is_dir else path.parent
     if output_dir is None:
-        output_dir = path if path.is_dir() else path.parent
+        output_dir = input_dir
+    if pfml:
+        source_dir = input_dir.resolve()
+        target_dir = output_dir.resolve()
+        if target_dir == source_dir or (
+            input_is_dir
+            and (target_dir.is_relative_to(source_dir) or source_dir.is_relative_to(target_dir))
+        ):
+            raise click.UsageError(
+                "--pfml requires a separate --output-dir. "
+                "For directory inputs, the input and output directory trees must not overlap."
+            )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     backend, vocabulary, inference_config = load_inference_model(
@@ -188,6 +207,7 @@ def _run_inference(
             language=language,
             timestep=backend.timestep,
             skip_handling=skip_handling,
+            save_pfml=pfml,
         ),
     ]
 
