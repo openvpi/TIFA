@@ -67,6 +67,9 @@ _KANA_TO_ROMAJI: dict[str, str] = {
     # ---- vu variants (hiragana U+3094) ----
     "ゔ": "vu",
     "ゔぁ": "va", "ゔぃ": "vi", "ゔぇ": "ve", "ゔぉ": "vo",
+    # ---- ぢ-row yoon and づ loanword digraphs ----
+    "ぢゃ": "ja", "ぢゅ": "ju", "ぢぇ": "je", "ぢょ": "jo",
+    "づぁ": "za", "づぉ": "zo",
     # ---- special ----
     "を": "o",
 }
