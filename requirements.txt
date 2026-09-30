@@ -5,7 +5,7 @@ click
 colorednoise
 dask
 einops>=0.7.0
-filelock
+g2pflow>=0.1.0,<0.2.0
 h5py
 librosa>=0.10.0
 lightning

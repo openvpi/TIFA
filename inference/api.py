@@ -3,6 +3,7 @@ import pathlib
 import lightning.pytorch as pl
 import lightning.pytorch.callbacks
 import torch
+from g2pflow import G2PPipelineConfig
 from lightning_utilities.core.rank_zero import rank_zero_only, rank_zero_info
 from torch import Tensor
 
@@ -11,7 +12,6 @@ from lib.config.core import ConfigBaseModel
 from lib.config.formatter import format_model
 from lib.config.io import load_raw_config
 from lib.config.schema import (
-    G2PPipelineConfig,
     InferenceConfig,
     ModelConfig,
 )
@@ -39,9 +39,9 @@ def _log_config(cfg: ConfigBaseModel):
     print(format_model(cfg))
 
 
-def load_g2p_config(path: pathlib.Path, scope: int = 0) -> G2PPipelineConfig:
+def load_g2p_config(path: pathlib.Path) -> G2PPipelineConfig:
     raw = load_raw_config(path, inherit=False)
-    return G2PPipelineConfig.model_validate(raw, scope=scope)
+    return G2PPipelineConfig.model_validate(raw)
 
 
 def load_config_for_inference(

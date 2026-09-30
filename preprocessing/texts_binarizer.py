@@ -4,13 +4,13 @@ from dataclasses import dataclass
 
 import librosa
 import numpy
+from g2pflow import G2PWord
 
-from g2p.api import build_pipeline_from_config
-from g2p.converters.base import G2PWord
-from g2p.encoding import encode_paths, resolve_phoneme
 from lib import logging
 from lib.audio import load_audio
 from lib.feature.pitch import get_pitch_parselmouth
+from lib.g2p import build_pipeline_from_config
+from lib.g2p_encoding import encode_paths, resolve_phoneme
 from lib.vocabulary import Vocabulary, is_stop_symbol, qualify_symbol
 
 from .binarizer_base import (

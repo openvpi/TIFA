@@ -4,12 +4,10 @@ from collections.abc import Iterable, Sequence
 from typing import Literal
 
 import numpy as np
+from g2pflow import G2PWord, Language
 
-from lib.levenshtein import align_multiple_sequences
-
-from lib.vocabulary import NUM_RESERVED_TOKENS, Vocabulary, qualify_symbol
-from .converters.base import G2PWord
-from .registry import Language
+from .levenshtein import align_multiple_sequences
+from .vocabulary import NUM_RESERVED_TOKENS, Vocabulary, qualify_symbol
 
 
 class G2PEncodingError(Exception):

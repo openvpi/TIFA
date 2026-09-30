@@ -163,7 +163,7 @@ def _run_inference(
 
     g2p_config = inference_config.g2p
     if g2p is not None:
-        g2p_config = load_g2p_config(g2p, scope=scope)
+        g2p_config = load_g2p_config(g2p)
         g2p_root = g2p.parent if g2p.resolve().is_relative_to(model.parent.resolve()) else ""
     elif g2p_config is not None:
         g2p_root = model.parent

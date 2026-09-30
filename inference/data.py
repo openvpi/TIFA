@@ -5,12 +5,12 @@ import librosa
 import textgrid
 import torch
 import torch.utils.data
+from g2pflow import G2PPipelineConfig
 
-from g2p.api import build_pipeline_from_config
-from g2p.encoding import G2PEncodingError, encode_paths
 from lib import logging
 from lib.audio import load_audio
-from lib.config.schema import G2PPipelineConfig
+from lib.g2p import build_pipeline_from_config
+from lib.g2p_encoding import G2PEncodingError, encode_paths
 from lib.vocabulary import Vocabulary
 from training.data import collate_nd
 

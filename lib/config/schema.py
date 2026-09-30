@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Annotated, Any, Literal, Union
 
 import numpy as np
+from g2pflow import G2PPipelineConfig
 from pydantic import Field, PrivateAttr, field_validator
 
 from .core import ConfigBaseModel
@@ -34,22 +35,6 @@ class DynamicCheck:
                 f"{'.'.join(str(e) for e in context.current_path)}\n"
                 f"  {self.message}"
             )
-
-
-class PreprocessorConfig(ConfigBaseModel):
-    id: str = Field(...)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
-
-
-class ConverterConfig(ConfigBaseModel):
-    id: str = Field(...)
-    language: str | None = Field(None)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
-
-
-class G2PPipelineConfig(ConfigBaseModel):
-    preprocessors: list[PreprocessorConfig] = Field(default_factory=list)
-    converters: list[ConverterConfig] = Field(default_factory=list)
 
 
 class RequiredOnGivenScope(DynamicCheck):

@@ -36,7 +36,7 @@ Run the commands below from the repository root. Dataset, dictionary and asset p
 
 ### G2P resources
 
-The default pipeline in [configs/g2p.yaml](configs/g2p.yaml) includes Chinese (Mandarin & Yue), Japanese and English converters. Prepare the dictionaries, optional dependencies and model assets for your configured converters as described in [G2P.md](docs/G2P.md#resources).
+TIFA uses [g2pflow](https://github.com/openvpi/g2pflow) for grapheme-to-phoneme conversion. The default pipeline in [configs/g2p.yaml](configs/g2p.yaml) includes Chinese (Mandarin & Yue), Japanese and English converters. Prepare the dictionaries, optional backends (`g2pflow[ja]` and `g2pflow[lstm]`) and model assets for your configured converters as described in [G2P.md](docs/G2P.md#resources).
 
 ### Pretrained models
 
@@ -121,7 +121,7 @@ converters:
       dict_path: "path/to/dictionary.txt"
 ```
 
-Save this pipeline directly as a YAML file, without a `binarizer.g2p` wrapper. Its phonemes must match the model vocabulary. See [G2P.md](docs/G2P.md) for dictionary formats, multilingual configuration, advanced usage and developer documentation.
+Save this pipeline directly as a YAML file, without a `binarizer.g2p` wrapper. Its phonemes must match the model vocabulary. See [G2P.md](docs/G2P.md) for resource setup, multilingual configuration, path rules and vocabulary encoding.
 
 For all inference options:
 
