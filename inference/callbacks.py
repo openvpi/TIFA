@@ -795,7 +795,7 @@ class EvaluationMetricsCallback(lightning.pytorch.callbacks.Callback):
                     tolerance=tol, mode=mode,
                 )
             if max_k:
-                for mode in ("onset", "offset"):
+                for mode in ("onset", "offset", "both"):
                     metrics[f"ber/{mode}/{tol}/{max_k}"] = BoundaryErrorRate(
                         tolerance=tol, mode=mode,
                         vocab_size=self._vocab.vocab_size, k=max_k,
@@ -910,7 +910,7 @@ class EvaluationMetricsCallback(lightning.pytorch.callbacks.Callback):
                 })
             if self._vocab and self.token_topk:
                 max_k = max(self.token_topk)
-                for mode in ("onset", "offset"):
+                for mode in ("onset", "offset", "both"):
                     m = self.metrics[f"ber/{mode}/{tol}/{max_k}"]
                     ber_variants.append({
                         "arguments": {"mode": mode, "tolerance": tol, "k": max_k},
@@ -1060,7 +1060,7 @@ class EvaluationMetricsCallback(lightning.pytorch.callbacks.Callback):
         KC = max(self.pair_topk) if self.pair_topk else 0
 
         for tol in self.ber_tols:
-            for mode in ("onset", "offset"):
+            for mode in ("onset", "offset", "both"):
                 if K:
                     self._plot_boundary_topk(
                         self.metrics[f"ber/{mode}/{tol}/{K}"],
