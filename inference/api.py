@@ -160,9 +160,14 @@ def run_inference(
     mode: str = "predict",
     score_unit: str = "levenshtein",
     skip_penalty: float = 0.5,
+    ved: VoiceEventInferenceModule | None = None,
+    ved_event_tokens: dict[str, int] | None = None,
 ) -> None:
     """Run inference (predict) or online evaluation (evaluate)."""
-    module = ForcedAlignmentInferenceModule(backend, score_unit=score_unit, skip_penalty=skip_penalty)
+    module = ForcedAlignmentInferenceModule(
+        backend, score_unit=score_unit, skip_penalty=skip_penalty,
+        ved=ved, ved_event_tokens=ved_event_tokens,
+    )
     trainer = pl.Trainer(
         precision=precision,
         logger=False,
@@ -191,7 +196,7 @@ def run_voice_event_evaluation(
     batch_size=4, num_workers=0, precision="32-true", metric_config=None, plot=False,
 ):
     module = VoiceEventInferenceModule(
-        model, events, features.timestep, output_dir, identifiers,
+        model, events, features, output_dir, identifiers,
         metric_config or VoiceEventValidationConfig(), plot=plot,
     )
     loader = torch.utils.data.DataLoader(

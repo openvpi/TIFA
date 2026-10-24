@@ -37,6 +37,8 @@ class AudioTextDataset(torch.utils.data.Dataset):
         audio_sample_rate: int,
         language: str | list[str] | None = None,
         oov_handling: Literal["raise", "discard", "force"] = "discard",
+        stop_symbols: set[str] | None = None,
+        ved_sample_rate: int | None = None,
     ):
         self.g2p_config = g2p_config
         self.g2p_root = g2p_root
@@ -47,6 +49,8 @@ class AudioTextDataset(torch.utils.data.Dataset):
             language = [language]
         self.language = language
         self.oov_handling = oov_handling
+        self.stop_symbols = stop_symbols or set()
+        self.ved_sample_rate = ved_sample_rate
 
         self.items: list[tuple[pathlib.Path, str]] = [
             (audio_path, identifier)
@@ -97,33 +101,42 @@ class AudioTextDataset(torch.utils.data.Dataset):
             data, lexicon, texts = encode_paths(
                 g2p_words, self.vocabulary, self.oov_handling,
                 languages=self.language,
+                stop_symbols=self.stop_symbols,
             )
         except G2PEncodingError as e:
             if self.oov_handling == "raise":
                 return {"skip": True, "error": f"'{identifier}': {e}"}
             return _skip(identifier, str(e))
-        if not data["paths"].any():
+        if not data["paths"].any() and self.ved_sample_rate is None:
             return _skip(identifier, "No valid token sequence")
         original_count = sum(len(reading.paths) for word in g2p_words for reading in word.readings)
         dropped = original_count - int(data["candidates"].sum())
         warning = f"Dropped {dropped} OOV pronunciation(s) in '{identifier}'" if dropped else ""
 
         audio, sr = load_audio(audio_path)
-        if sr != self.sample_rate:
-            audio = librosa.resample(
-                audio, orig_sr=sr, target_sr=self.sample_rate,
-            )
+        rates = {self.sample_rate}
+        if self.ved_sample_rate is not None:
+            rates.add(self.ved_sample_rate)
+        waveforms = {
+            rate: torch.from_numpy(
+                audio if rate == sr else librosa.resample(audio, orig_sr=sr, target_sr=rate)
+            ).float()
+            for rate in rates
+        }
 
-        return {
+        item = {
             "skip": False,
             "identifier": identifier,
             "warning": warning,
-            "waveform": torch.from_numpy(audio).float(),
-            "duration": len(audio) / self.sample_rate,
+            "waveform": waveforms[self.sample_rate],
+            "duration": len(waveforms[self.sample_rate]) / self.sample_rate,
             **{key: torch.from_numpy(value) for key, value in data.items()},
             "lexicon": lexicon,
             "texts": texts,
         }
+        if self.ved_sample_rate is not None:
+            item["ved_waveform"] = waveforms[self.ved_sample_rate]
+        return item
 
     @staticmethod
     def collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -140,9 +153,10 @@ class AudioTextDataset(torch.utils.data.Dataset):
         return {
             "warning": warning,
             "identifier": [b["identifier"] for b in valid],
-            "waveform": collate_nd(
-                [b["waveform"] for b in valid], pad_value=0.,
-            ),
+            **{
+                key: collate_nd([b[key] for b in valid], pad_value=0.)
+                for key in ("waveform", "ved_waveform") if key in valid[0]
+            },
             "duration": torch.tensor(
                 [b["duration"] for b in valid], dtype=torch.float32,
             ),

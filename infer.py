@@ -49,6 +49,17 @@ def shared_options(func):
             help="Path to model checkpoint.",
         ),
         click.option(
+            "--ved-model",
+            type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+            default=None,
+            help="Voice event detector checkpoint for two-pass alignment.",
+        ),
+        click.option(
+            "--ved-events", default=None, callback=csv_list(str),
+            help="Comma-separated, case-sensitive events to insert (for example AP,EP,GS). "
+                 "Defaults to all events in --ved-model.",
+        ),
+        click.option(
             "--input-formats", default="wav,flac,opus,mp3,aac,ogg",
             show_default=True, callback=_validate_exts,
             help="Comma-separated audio file extensions to scan for (directory mode).",
@@ -145,12 +156,19 @@ def _run_inference(
         pfml: bool = False,
         stat: bool = False,
         plot: bool = False,
+        ved_model: pathlib.Path | None = None,
+        ved_events: list[str] | None = None,
 ):
+    if ved_events is not None and ved_model is None:
+        raise click.UsageError("--ved-events requires --ved-model.")
+
     from lightning_utilities.core.rank_zero import rank_zero_info
 
-    from inference.api import load_g2p_config, load_inference_model, run_inference
+    from inference.api import load_g2p_config, load_inference_model, load_voice_event_detector, run_inference
     from inference.data import AudioTextDataset
     from inference.callbacks import StatisticsCallback, SavePlotCallback, SaveTextGridCallback
+    from inference.module import VoiceEventInferenceModule
+    from lib.vocabulary import NUM_RESERVED_TOKENS
 
     g2p_languages = [language] if language else []
     if extended_language:
@@ -180,6 +198,27 @@ def _run_inference(
         scope=scope,
     )
 
+    ved = None
+    ved_event_tokens = {}
+    if ved_model is not None:
+        detector, events, ved_config = load_voice_event_detector(ved_model)
+        selected_events = events if ved_events is None else ved_events
+        unknown = [event for event in selected_events if event not in events]
+        if unknown:
+            raise click.BadParameter(
+                f"Events not in the VED vocabulary: {', '.join(map(repr, unknown))}.",
+                param_hint="--ved-events",
+            )
+        ved_event_tokens = {event: vocabulary.encode(event, None) for event in selected_events}
+        unsupported = [event for event, token in ved_event_tokens.items()
+                       if token is None or token < NUM_RESERVED_TOKENS]
+        if unsupported:
+            raise click.BadParameter(
+                f"Events not supported by the FA vocabulary: {', '.join(unsupported)}.",
+                param_hint="--ved-model" if ved_events is None else "--ved-events",
+            )
+        ved = VoiceEventInferenceModule(detector, events, ved_config.features)
+
     g2p_config = inference_config.g2p
     if g2p is not None:
         g2p_config = load_g2p_config(g2p)
@@ -199,6 +238,8 @@ def _run_inference(
         audio_sample_rate=backend.sample_rate,
         language=g2p_languages if g2p_languages else None,
         oov_handling=oov_handling,
+        stop_symbols=set(ved.events) if ved is not None else None,
+        ved_sample_rate=ved.spec_fn.sample_rate if ved is not None else None,
     )
 
     callbacks = [
@@ -227,6 +268,8 @@ def _run_inference(
         mode="predict",
         score_unit=score_unit,
         skip_penalty=skip_penalty,
+        ved=ved,
+        ved_event_tokens=ved_event_tokens,
     )
     logging.success("Inference completed.", callback=rank_zero_info)
 

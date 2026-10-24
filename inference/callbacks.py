@@ -166,10 +166,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
                     ph[len(prefix):] if ph.startswith(prefix) else ph
                     for ph in phonemes
                 ]
-            group_scripts = []
-            for candidates, choice in zip(result["lexicon"], result["choices"].tolist()):
-                if choice > 0:
-                    group_scripts.extend(candidates[choice - 1]["scripts"])
+            group_scripts = result["group_scripts"]
             N = len(spans)
             if N == 0:
                 continue
@@ -598,7 +595,7 @@ class StatisticsCallback(lightning.pytorch.callbacks.Callback):
             if result.get("scores") is not None:
                 words = []
                 for w, (text, candidates, chosen) in enumerate(zip(
-                    result["texts"], result["lexicon"], result["choices"].tolist(),
+                    result["score_texts"], result["lexicon"], result["choices"].tolist(),
                 )):
                     width = len(candidates)
                     if width <= 1:
