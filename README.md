@@ -80,8 +80,13 @@ Keep any dictionary and G2P assets referenced by the model configuration availab
 ### Align a single file
 
 ```bash
-python infer.py [audio-path] -m [model-path] -l [language] --stat
+python infer.py [audio-path] -m [fa-model-path] -l [language] \
+  --ved-model [ved-model-path] --fill SP --stat
 ```
+
+Use `--ved-events AP,EP,GS` to select events; omitting it selects all VED classes. Selected events must be supported by the FA vocabulary.
+
+`--fill SP` labels remaining gaps in all TextGrid tiers as `SP`.
 
 We recommend enabling `--stat`, as shown above, to save self-check metrics for inspecting alignment quality. See [Statistics](#statistics) for the generated files and metric descriptions.
 
@@ -90,7 +95,8 @@ By default, the TextGrid is saved beside the audio file with the same basename, 
 ### Process a directory
 
 ```bash
-python infer.py path/to/audio/ -m path/to/model.pt -l zh -o path/to/output/ --batch-size 8 --stat
+python infer.py [audio-dir] -m [fa-model-path] -l [language] \
+  --ved-model [ved-model-path] --fill SP -o [save-dir] --batch-size 8 --stat
 ```
 
 Directory processing is recursive and preserves the relative subdirectory structure in the output. The default audio extensions are `wav,flac,opus,mp3,aac,ogg`; decoding support depends on the installed audio backend. Use `--input-formats wav,flac` to restrict the scan.
@@ -100,7 +106,8 @@ Directory processing is recursive and preserves the relative subdirectory struct
 Use `-l` to select the default language, for example `zh`, `ja` or `en`. Use `-L` to enable additional languages as a comma-separated list. For example, to align Chinese text containing English:
 
 ```bash
-python infer.py [path-or-directory] -m [model-path] -l zh -L en --stat
+python infer.py [path-or-directory] -m [fa-model-path] -l zh -L en \
+  --ved-model [ved-model-path] --fill SP --stat
 ```
 
 The G2P configuration must include converters for the selected languages. The default language prefix is omitted from phoneme labels.
@@ -108,7 +115,8 @@ The G2P configuration must include converters for the selected languages. The de
 Inference uses `inference.g2p` from the model's `config.yaml`. To override it, or if the model has no G2P configuration:
 
 ```bash
-python infer.py [path-or-directory] -m [model-path] --g2p [g2p-config-path] --stat
+python infer.py [path-or-directory] -m [fa-model-path] --g2p [g2p-config-path] \
+  --ved-model [ved-model-path] --fill SP --stat
 ```
 
 For example, a custom configuration for dictionary-based English conversion:
@@ -133,17 +141,6 @@ For all inference options:
 python infer.py --help
 ```
 
-### Insert voice events
-
-Use a Voice Event Detector (VED) to add `AP`, `EP`, `GS` or other configured event labels during alignment:
-
-```bash
-python infer.py [path-or-directory] -m [fa-model-path] \
-  --ved-model [ved-model-path] --ved-events AP,EP,GS
-```
-
-Omitting `--ved-events` selects all VED classes. Selected events need to be supported by the FA vocabulary.
-
 ### Output
 
 Each TextGrid contains three tiers in this order:
@@ -159,12 +156,12 @@ A semantic word may contain several pronunciation groups, so `texts` and `words`
 For example, Japanese input `猫` can be converted into the pronunciation groups `ne` and `ko`, with phonemes `n e k o`. With `-l ja`, an illustrative alignment would look like this:
 
 ```text
-texts      |      |                猫                 |      |
-words      |      |        ne        |       ko       |      |
-phones     |      | n |      e       |  k  |    o     |      |
+texts      |  SP  |                猫                 |  SP  |
+words      |  SP  |        ne        |       ko       |  SP  |
+phones     |  SP  | n |      e       |  k  |    o     |  SP  |
 ```
 
-All three tiers share the same timeline. The word `猫` spans both `ne` and `ko`, and each pronunciation group spans its two phonemes. Unlabeled gaps, shown as blank cells above, are filled with `""`.
+All three tiers share the same timeline. The word `猫` spans both `ne` and `ko`, and each pronunciation group spans its two phonemes. `--fill SP` supplies the `SP` intervals shown above.
 
 The `-l ja` option removes `ja/` from phoneme labels in this example. Other language prefixes remain in mixed-language output. Zero-width phoneme intervals are omitted by default; use `--skip-handling` to change this behavior.
 
@@ -403,13 +400,13 @@ The dataset must use the same feature settings and vocabulary as the model. Eval
 For a separate test dataset, use the training feature configuration and reuse the model's vocabulary when binarizing:
 
 ```bash
-python binarize.py --config path/to/config.yaml --eval \
-  --override binarizer.phoneme_timing_data_dir=path/to/test-datasets \
+python binarize.py --config [config-path] --eval \
+  --override binarizer.phoneme_timing_data_dir=[test-dataset-dir] \
   --override binarizer.text_only_data_dir=null \
-  --override binarizer.vocabulary.prebuilt_vocab_file=path/to/model/vocabulary.json
+  --override binarizer.vocabulary.prebuilt_vocab_file=[model-dir]/vocabulary.json
 
-python evaluate.py -d path/to/test-datasets -m path/to/model.pt \
-  -o path/to/evaluation --plot
+python evaluate.py -d [test-dataset-dir] -m [model-dir]/model.pt \
+  -o [save-dir] --plot
 ```
 
 The `--eval` preprocessing mode puts the entire dataset into the validation split. Use a separate test-data root to keep the training split intact.

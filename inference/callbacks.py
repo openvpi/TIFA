@@ -136,6 +136,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
             timestep: float = 1.0,
             skip_handling: str = "omit",
             save_pfml: bool = False,
+            fill: str = "",
     ):
         super().__init__()
         self.output_dir = pathlib.Path(output_dir)
@@ -143,6 +144,7 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
         self.timestep = timestep
         self.skip_handling = skip_handling
         self.save_pfml = save_pfml
+        self.fill = fill
 
     def on_predict_batch_end(
             self,
@@ -274,7 +276,12 @@ class SaveTextGridCallback(lightning.pytorch.callbacks.Callback):
                 pfml_source = to_pfml(pfml_words)
                 with output_path.with_suffix(".pfml").open("w", encoding="utf8") as f:
                     f.write(pfml_source + "\n")
-            tg.write(str(output_path))
+            if self.fill:
+                for tier in tg:
+                    for interval in tier:
+                        if not interval.mark:
+                            interval.mark = self.fill
+            tg.write(str(output_path), null=self.fill)
 
 
 class SavePlotCallback(lightning.pytorch.callbacks.Callback):

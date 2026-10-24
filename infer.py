@@ -107,6 +107,10 @@ def shared_options(func):
             help="Pronunciation unit used for MLM scoring.",
         ),
         click.option(
+            "--fill", default="", metavar="LABEL",
+            help="Fill gaps in all TextGrid tiers with LABEL, e.g. SP. Does not affect PFML.",
+        ),
+        click.option(
             "--pfml", is_flag=True,
             help="Save aligned pronunciations as PFML next to TextGrid output. "
                  "Requires a separate --output-dir.",
@@ -158,6 +162,7 @@ def _run_inference(
         plot: bool = False,
         ved_model: pathlib.Path | None = None,
         ved_events: list[str] | None = None,
+        fill: str = "",
 ):
     if ved_events is not None and ved_model is None:
         raise click.UsageError("--ved-events requires --ved-model.")
@@ -249,6 +254,7 @@ def _run_inference(
             timestep=backend.timestep,
             skip_handling=skip_handling,
             save_pfml=pfml,
+            fill=fill,
         ),
     ]
 
