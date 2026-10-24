@@ -503,6 +503,13 @@ class TrainerStrategyConfig(ConfigBaseModel):
     kwargs: dict[str, Any] = Field(...)
 
 
+class EarlyStoppingConfig(ConfigBaseModel):
+    monitor: str = Field(...)
+    mode: Literal["min", "max"] = Field("min")
+    patience: int = Field(3, ge=1)
+    min_delta: float = Field(0.0, ge=0)
+
+
 class TrainerConfig(ConfigBaseModel):
     seed: int | None = Field(None, ge=0)
     unit: Literal["step", "epoch"] = Field(...)
@@ -514,6 +521,7 @@ class TrainerConfig(ConfigBaseModel):
     log_every_n_steps: int = Field(100, ge=1)
     num_sanity_val_steps: int = Field(1)
     checkpoints: list[ModelCheckpointConfig] = Field(..., min_length=1)
+    early_stopping: EarlyStoppingConfig | None = Field(None)
     accelerator: str = Field("auto")
     devices: Union[Literal["auto"], int, list[int]] = Field("auto")
     num_nodes: Literal[1] = Field(1, ge=1)

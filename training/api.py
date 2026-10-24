@@ -4,6 +4,7 @@ import re
 import shutil
 
 from lightning_utilities.core.rank_zero import rank_zero_only
+from lightning.pytorch.callbacks import EarlyStopping
 
 from lib import logging
 from lib.config.core import ConfigBaseModel
@@ -178,6 +179,11 @@ def train_model(
         else:
             raise ValueError(f"Invalid checkpoint monitor type: {ckpt_config.type}")
         callbacks.append(checkpoint)
+    early_stopping = training_config.trainer.early_stopping
+    if early_stopping is not None:
+        callbacks.append(EarlyStopping(
+            **early_stopping.model_dump(), check_on_train_epoch_end=False,
+        ))
     if training_config.iterative_ranking.enabled:
         cfg = training_config.iterative_ranking
         callbacks.append(IterativeRanking(

@@ -113,6 +113,7 @@ training:
         since_m_units: 30000
         save_last_k: -1
         weights_only: false
+    early_stopping: null
     precision: "bf16-mixed"
     accelerator: "auto"
     devices: "auto"
