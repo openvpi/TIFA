@@ -46,6 +46,7 @@ Full list: [releases](https://github.com/openvpi/TIFA/releases)
 |-------------|---------------------------------------------|----------------------------------------------------------------|
 | TIFA-1.0    | 1.0 model with 4 languages                  | [PyTorch](https://github.com/openvpi/TIFA/releases/tag/v1.0.0) |
 | TIFA-1.0-ST | 1.0 model with 4 languages and special tags | [PyTorch](https://github.com/openvpi/TIFA/releases/tag/v1.0.0) |
+| VED-2026.10 | Voice event detector for AP, EP and GS      | [PyTorch](https://github.com/openvpi/TIFA/releases/tag/v1.0.1) |
 
 ## Inference
 
