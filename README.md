@@ -132,6 +132,17 @@ For all inference options:
 python infer.py --help
 ```
 
+### Insert voice events
+
+Use a Voice Event Detector (VED) to add `AP`, `EP`, `GS` or other configured event labels during alignment:
+
+```bash
+python infer.py [path-or-directory] -m [fa-model-path] \
+  --ved-model [ved-model-path] --ved-events AP,EP,GS
+```
+
+Omitting `--ved-events` selects all VED classes. Selected events need to be supported by the FA vocabulary.
+
 ### Output
 
 Each TextGrid contains three tiers in this order:
