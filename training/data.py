@@ -30,6 +30,7 @@ __all__ = [
     "plan_concat_groups",
     "BaseDataset",
     "PhonemeTimingDataset",
+    "VoiceEventDataset",
     "TextOnlyDataset",
     "DynamicBatchSampler",
     "ZippedDataLoader",
@@ -576,6 +577,43 @@ class PhonemeTimingDataset(BaseDataset):
 
     def _concat_specific_samples(self, samples: list[dict]) -> dict:
         return concat_phoneme_timing_fields(samples)
+
+
+class VoiceEventDataset(BaseDataset):
+    """Frame and event targets from voice-event binary data."""
+
+    def __init__(self, *args, augmentation_config=None, **kwargs):
+        if augmentation_config is not None:
+            # Follow supervised timing-data augmentation: preserve frame coordinates.
+            augmentation_config = augmentation_config.drop("time_stretching", "sequence_edit", "token_masking")
+        super().__init__(*args, augmentation_config=augmentation_config, **kwargs)
+
+    def __getitem__(self, index):
+        sample = super().__getitem__(index)
+        return sample if self._group_indices is not None else self._prepare_item(sample)
+
+    def _prepare_item(self, sample: dict) -> dict:
+        result = {key: sample[key] for key in ("_idx", "_augmentation", "spectrogram", "spectrogram_dirty") if key in sample}
+        result.update(
+            frame_targets=sample["frame_targets"],
+            event_labels=sample["event_labels"],
+            event_spans=sample["event_spans"],
+            T=torch.tensor(len(sample["frame_targets"]), dtype=torch.long),
+            N=torch.tensor(len(sample["event_labels"]), dtype=torch.long),
+        )
+        return result
+
+    def _concat_specific_samples(self, samples: list[dict]) -> dict:
+        spans = []
+        offset = 0
+        for sample in samples:
+            spans.append(sample["event_spans"] + offset)
+            offset += int(sample["T"])
+        return {
+            "frame_targets": torch.cat([sample["frame_targets"] for sample in samples]),
+            "event_labels": torch.cat([sample["event_labels"] for sample in samples]),
+            "event_spans": torch.cat(spans),
+        }
 
 
 class TextOnlyDataset(BaseDataset):

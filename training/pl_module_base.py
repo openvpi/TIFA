@@ -48,12 +48,7 @@ class BaseLightningModule(lightning.pytorch.LightningModule, abc.ABC):
         self.aux_data_dir = aux_data_dir
         self.model_config = model_config
         self.training_config = training_config
-        self.vocab = Vocabulary.from_file(self.data_dir / "vocabulary.json")
-        if self.vocab.vocab_size > model_config.max_vocab_size:
-            raise ValueError(
-                f"Vocabulary size {self.vocab.vocab_size} exceeds "
-                f"max_vocab_size {model_config.max_vocab_size}"
-            )
+        self.load_vocabulary()
 
         self.model: nn.Module = self.build_model()
         self.losses: dict[str, nn.Module] = nn.ModuleDict()
@@ -88,6 +83,15 @@ class BaseLightningModule(lightning.pytorch.LightningModule, abc.ABC):
         self.logger_step = -1  # when accumulate_grad_batches > 1, this helps to avoid redundant logging
 
         self.post_init()
+
+    def load_vocabulary(self) -> None:
+        """Load task vocabulary before building the model."""
+        self.vocab = Vocabulary.from_file(self.data_dir / "vocabulary.json")
+        if self.vocab.vocab_size > self.model_config.max_vocab_size:
+            raise ValueError(
+                f"Vocabulary size {self.vocab.vocab_size} exceeds "
+                f"max_vocab_size {self.model_config.max_vocab_size}"
+            )
 
     @classmethod
     @abc.abstractmethod

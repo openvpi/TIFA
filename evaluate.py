@@ -160,9 +160,9 @@ def _check_vocabulary(checkpoint_dir: pathlib.Path, dataset_dir: pathlib.Path):
     if not dataset_vocab_path.is_file():
         raise FileNotFoundError(f"Vocabulary not found at {dataset_vocab_path}")
     with open(ckpt_vocab_path, "r", encoding="utf8") as f:
-        ckpt_vocab = json.load(f)["symbols"]
+        ckpt_vocab = json.load(f)
     with open(dataset_vocab_path, "r", encoding="utf8") as f:
-        dataset_vocab = json.load(f)["symbols"]
+        dataset_vocab = json.load(f)
     if ckpt_vocab != dataset_vocab:
         raise RuntimeError(
             "Vocabulary mismatch between checkpoint and dataset. "
@@ -330,6 +330,33 @@ def main():
 def supervised(**kwargs):
     """Supervised online evaluation on a binarized dataset."""
     _run_online_evaluation(scope=ConfigurationScope.FA, **kwargs)
+
+
+@main.command(name="ved", help="Evaluate Voice Event Detector frame/event P/R/F1.")
+@shared_input_options
+@shared_output_options
+@click.option("--batch-size", type=click.IntRange(min=1), default=4, show_default=True)
+@click.option("--num-workers", type=click.IntRange(min=0), default=0, show_default=True)
+@click.option("--precision", default="32-true", show_default=True)
+@click.option("--event-collar-ms", type=click.FloatRange(min=0), default=200.0, show_default=True)
+@click.option("--require-offset", is_flag=True, help="Match both onset and offset within the event collar.")
+def ved(dataset, model, prefix, output_dir, plot, batch_size, num_workers, precision, event_collar_ms, require_offset):
+    from lib.config.schema import VoiceEventValidationConfig
+    from inference.api import load_voice_event_detector, run_voice_event_evaluation
+    from training.data import VoiceEventDataset
+
+    detector, events, config = load_voice_event_detector(model)
+    _check_file_and_config(dataset / "feature.yaml", config.features.model_dump())
+    _check_vocabulary(model.parent, dataset)
+    data = VoiceEventDataset(dataset, prefix)
+    run_voice_event_evaluation(
+        detector, events, config.features, data, output_dir,
+        [str(data.get_metadata("item_paths", index)) for index in range(len(data))],
+        batch_size=batch_size, num_workers=num_workers, precision=precision,
+        metric_config=VoiceEventValidationConfig(event_collar_ms=event_collar_ms, require_offset=require_offset),
+        plot=plot,
+    )
+    logging.success("Voice event evaluation completed.")
 
 
 # @main.command(name="ssl")

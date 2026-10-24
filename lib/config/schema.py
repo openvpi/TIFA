@@ -10,13 +10,14 @@ from pydantic import Field, PrivateAttr, field_validator
 from .core import ConfigBaseModel
 from .ops import (
     ConfigOperationBase, ConfigOperationContext,
-    ref, this, ctx, if_, exists, coalesce
+    ref, this, ctx, if_, exists, coalesce, len_
 )
 
 
 class ConfigurationScope:
     FA = 0x1
     FA_SSL = 0x2
+    VED = 0x4
 
 
 class DynamicCheck:
@@ -46,10 +47,31 @@ class RequiredOnGivenScope(DynamicCheck):
 
 
 class VocabularyConfig(ConfigBaseModel):
-    prebuilt_vocab_file: str | None = Field(default=None)
-    global_symbols: list[str] = Field(default_factory=list)
-    stop_symbols: list[str] = Field(default_factory=list)
-    merged_groups: list[list[str]] = Field(default_factory=list)
+    prebuilt_vocab_file: str | None = Field(default=None, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    global_symbols: list[str] = Field(default_factory=list, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    stop_symbols: list[str] = Field(default_factory=list, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    merged_groups: list[list[str]] = Field(default_factory=list, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    events: list[str] = Field(None, min_length=1, json_schema_extra={
+        "scope": ConfigurationScope.VED,
+        "dynamic_check": RequiredOnGivenScope(ConfigurationScope.VED),
+    })
+
+    @field_validator("events")
+    @classmethod
+    def check_events(cls, values):
+        if any(not value or value != value.strip() for value in values):
+            raise ValueError("Event names must be nonempty and have no surrounding whitespace.")
+        if len(set(values)) != len(values):
+            raise ValueError("Event names must be unique.")
+        return values
 
 
 class SpectrogramConfig(ConfigBaseModel):
@@ -119,9 +141,16 @@ class BinarizerConfig(ConfigBaseModel):
         "dynamic_check": RequiredOnGivenScope(ConfigurationScope.FA),
     })
     text_only_data_dir: str | None = Field(None, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
         "dynamic_check": RequiredOnGivenScope(ConfigurationScope.FA_SSL),
     })
-    g2p: G2PPipelineConfig | None = Field(None)
+    voice_event_data_dir: str = Field(None, json_schema_extra={
+        "scope": ConfigurationScope.VED,
+        "dynamic_check": RequiredOnGivenScope(ConfigurationScope.VED),
+    })
+    g2p: G2PPipelineConfig | None = Field(None, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
     vocabulary: VocabularyConfig = Field(default_factory=VocabularyConfig)
     split: ValidationSplitConfig = Field(default_factory=ValidationSplitConfig)
     num_workers: int = Field(0, ge=0)
@@ -130,6 +159,10 @@ class BinarizerConfig(ConfigBaseModel):
     @property
     def phoneme_timing_data_dir_resolved(self) -> pathlib.Path:
         return pathlib.Path(self.phoneme_timing_data_dir).resolve()
+
+    @property
+    def voice_event_data_dir_resolved(self) -> pathlib.Path:
+        return pathlib.Path(self.voice_event_data_dir).resolve()
 
     @property
     def text_only_data_dir_resolved(self) -> pathlib.Path | None:
@@ -145,11 +178,20 @@ class BackboneConfig(ConfigBaseModel):
 
 class ModelConfig(ConfigBaseModel):
     arch: str = Field(...)
-    max_vocab_size: int = Field(256)
+    max_vocab_size: int = Field(256, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
     in_dim: int = Field(None, json_schema_extra={
         "dynamic_expr": ref("binarizer.features.spectrogram.num_bins")
     })
-    embedding_dim: int = Field(256, gt=0)
+    embedding_dim: int = Field(256, gt=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    num_classes: int = Field(None, ge=2, json_schema_extra={
+        "scope": ConfigurationScope.VED,
+        "dynamic_expr": len_(ref("binarizer.vocabulary.events")) + 1,
+        "dynamic_check": RequiredOnGivenScope(ConfigurationScope.VED),
+    })
     out_dim: int = Field(256, gt=0, json_schema_extra={
         "scope": ConfigurationScope.FA,
     })
@@ -392,6 +434,10 @@ class SpectrogramReconstructionLossConfig(LossInstanceConfig):
 
 
 class LossConfig(ConfigBaseModel):
+    voice_event: LossInstanceConfig = Field(None, json_schema_extra={
+        "scope": ConfigurationScope.VED,
+        "dynamic_check": RequiredOnGivenScope(ConfigurationScope.VED),
+    })
     frame_alignment: FrameAlignmentLossConfig = Field(None, json_schema_extra={
         "scope": ConfigurationScope.FA,
         "dynamic_check": RequiredOnGivenScope(ConfigurationScope.FA),
@@ -543,18 +589,42 @@ class TrainerConfig(ConfigBaseModel):
         return v
 
 
+class VoiceEventValidationConfig(ConfigBaseModel):
+    event_collar_ms: float = Field(200.0, ge=0)
+    require_offset: bool = Field(False)
+
+
 class ValidationConfig(ConfigBaseModel):
     allow_amp: bool = Field(False)
     max_plots: int = Field(100, ge=0)
-    skip_penalty: float = Field(0.5, ge=0.0)
+    skip_penalty: float = Field(0.5, ge=0.0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
     parallel_dirty_metrics: bool = Field(True)
-    metrics_ber_tolerance: int = Field(5, ge=0)
-    metrics_k_values: list[int] = Field([5, 20])
-    metrics_conjunction_k_values: list[int] = Field([5, 20])
-    metrics_determinacy_power: float = Field(2.0, ge=0)
-    metrics_determinacy_width: int | None = Field(5, ge=0)
-    metrics_monotonicity_power: float = Field(2.0, ge=0)
-    metrics_monotonicity_width: int | None = Field(None, ge=0)
+    voice_event: VoiceEventValidationConfig = Field(default_factory=VoiceEventValidationConfig, json_schema_extra={
+        "scope": ConfigurationScope.VED,
+    })
+    metrics_ber_tolerance: int = Field(5, ge=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_k_values: list[int] = Field([5, 20], json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_conjunction_k_values: list[int] = Field([5, 20], json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_determinacy_power: float = Field(2.0, ge=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_determinacy_width: int | None = Field(5, ge=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_monotonicity_power: float = Field(2.0, ge=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
+    metrics_monotonicity_width: int | None = Field(None, ge=0, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
+    })
 
 
 class FinetuningConfig(ConfigBaseModel):
@@ -592,7 +662,9 @@ class SemiSupervisedConfig(ConfigBaseModel):
 
 class TrainingConfig(ConfigBaseModel):
     augmentation: AugmentationConfig = Field(...)
-    semisupervised: SemiSupervisedConfig = Field(default_factory=SemiSupervisedConfig)
+    semisupervised: SemiSupervisedConfig = Field(default_factory=SemiSupervisedConfig, json_schema_extra={
+        "scope": ConfigurationScope.FA,
+    })
     iterative_ranking: IterativeRankingConfig = Field(default_factory=IterativeRankingConfig)
     loss: LossConfig = Field(...)
     dataloader: DataLoaderConfig = Field(...)
@@ -606,6 +678,7 @@ class TrainingConfig(ConfigBaseModel):
 
 class InferenceConfig(ConfigBaseModel):
     g2p: G2PPipelineConfig | None = Field(None, json_schema_extra={
+        "scope": ConfigurationScope.FA | ConfigurationScope.FA_SSL,
         "dynamic_expr": ref("binarizer.g2p")
     })
     features: BinarizerFeaturesConfig = Field(None, json_schema_extra={

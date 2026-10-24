@@ -128,6 +128,18 @@ def supervised(
     )
 
 
+@main.command(name="ved", help="Train Voice Event Detector.")
+@shared_options
+def ved(config, override, exp_name, work_dir, log_dir, restart, resume_from):
+    from training.ved_module import VoiceEventDetectorModule
+    _run_training(
+        config=config, override=override,
+        exp_name=exp_name, work_dir=work_dir, log_dir=log_dir,
+        restart=restart, resume_from=resume_from,
+        scope=ConfigurationScope.VED, pl_module_cls=VoiceEventDetectorModule,
+    )
+
+
 # @main.command(name="ssl", help="Train a self-supervised model.")
 # @shared_options
 def ssl(

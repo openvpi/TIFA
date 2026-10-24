@@ -312,7 +312,7 @@ class EBFEncoderBackbone(nn.Module):
         return x_features, token_features, attn
 
 
-class EBFDecoderBackbone(nn.Module):
+class EBFBackbone(nn.Module):
     """Single-stream decoder: input projection followed by stacked EBF layers."""
 
     def __init__(

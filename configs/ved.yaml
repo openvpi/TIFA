@@ -1,0 +1,54 @@
+bases:
+  - configs/base.yaml
+
+binarizer:
+  voice_event_data_dir: data/phones
+  vocabulary:
+    events: [AP, EP, GS]
+
+model:
+  arch: VoiceEventDetectionModel
+  backbone:
+    cls: modules.backbones.ebf.EBFBackbone
+    kwargs:
+      dim: 256
+      num_layers: 8
+      num_heads: 4
+      head_dim: 64
+      ffn_type: glu
+      skip_first_ffn: false
+      use_rope: true
+
+training:
+  augmentation:
+    time_stretching:
+      enabled: false
+  loss:
+    voice_event:
+      weight: 1.0
+  trainer:
+    seed: 2026
+    min_steps: 4000
+    val_every_n_units: 1000
+    checkpoints:
+      - tag: best
+        type: expression
+        expression: Event_F1_macro
+        save_top_k: 5
+        mode: max
+        weights_only: false
+      - tag: latest
+        type: periodic
+        unit: step
+        every_n_units: 1000
+        save_last_k: 1
+        weights_only: false
+    early_stopping:
+      monitor: Event_F1_macro
+      mode: max
+      patience: 8
+      min_delta: 0.001
+  validation:
+    voice_event:
+      event_collar_ms: 200
+      require_offset: false

@@ -31,7 +31,7 @@ model:
       use_rope: true
       ffn_type: glu
   reconstructor:
-    cls: modules.backbones.ebf.EBFDecoderBackbone
+    cls: modules.backbones.ebf.EBFBackbone
     kwargs:
       dim: 256
       num_layers: 4

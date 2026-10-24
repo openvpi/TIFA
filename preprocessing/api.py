@@ -58,6 +58,10 @@ def build_vocab_from_datasets(
     )
     if not main_metadata:
         raise RuntimeError("No metadata items found in the main dataset.")
+    if len(binarizers) == 1:
+        binarizers[0].build_vocabulary(main_metadata)
+        logging.success("Vocabulary built.")
+        return
     vocabulary, counter, builder = build_shared_vocab(
         config.vocabulary,
         main_metadata,

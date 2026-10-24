@@ -1,9 +1,16 @@
+import json
+import pathlib
+
 import lightning.pytorch as pl
+import matplotlib.pyplot as plt
 import torch
+from torchmetrics import MeanMetric
 
 from inference.backend import InferenceBackend, SpectrogramContext
 from lib import logging
 from lib.path_traversal import materialize_paths
+from modules.losses import FrameIdentityLoss
+from modules.metrics.voice_event import VoiceEventPRF
 
 
 class ForcedAlignmentInferenceModule(pl.LightningModule):
@@ -99,6 +106,74 @@ class ForcedAlignmentInferenceModule(pl.LightningModule):
         spec = SpectrogramContext(features=spectrogram, mask=mask)
         result = self.backend.align(spec, tokens=tokens, unit="frame", skip_penalty=self.skip_penalty)
         return {"spans": result.spans, "similarity": result.similarity}
+
+
+class VoiceEventInferenceModule(pl.LightningModule):
+    def __init__(self, model, events: list[str], timestep, output_dir, identifiers, metric_config, plot=False):
+        super().__init__()
+        self.model = model
+        self.events = events
+        self.output_dir = pathlib.Path(output_dir)
+        self.identifiers = identifiers
+        self.metric_config = metric_config
+        self.plot = plot
+        self.metrics = VoiceEventPRF(
+            events, collar=metric_config.event_collar_ms / (1000 * timestep),
+            require_offset=metric_config.require_offset,
+        )
+        self.loss = FrameIdentityLoss()
+        self.mean_loss = MeanMetric()
+
+    def forward(self, batch):
+        features = batch["spectrogram"]
+        mask = torch.arange(features.shape[1], device=features.device)[None, :] < batch["T"][:, None]
+        return self.model(features, mask), mask
+
+    def on_test_epoch_start(self):
+        self.metrics.reset()
+        self.mean_loss.reset()
+
+    def test_step(self, batch, batch_idx):
+        logits, mask = self(batch)
+        self.metrics.update(logits.argmax(-1), batch["frame_targets"], mask,
+                            batch["event_labels"], batch["event_spans"])
+        self.mean_loss.update(self.loss(logits, batch["frame_targets"], mask), weight=mask.sum())
+        if self.plot:
+            self._save_plots(batch, logits)
+
+    def on_test_epoch_end(self):
+        values = {key: float(value) for key, value in self.metrics.compute().items()}
+        values["voice_event_loss"] = float(self.mean_loss.compute())
+        self.log_dict(values)
+        summary = {
+            "classes": self.events,
+            "event_collar_ms": self.metric_config.event_collar_ms,
+            "require_offset": self.metric_config.require_offset,
+            "metrics": values,
+            "counts": {
+                name: {"frame": frames, "event": events}
+                for name, frames, events in zip(self.events,
+                                               self.metrics.frame_counts.cpu().tolist(),
+                                               self.metrics.event_counts.cpu().tolist())
+            },
+            "count_order": ["tp", "fp", "fn"],
+        }
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf8")
+
+    def _save_plots(self, batch, logits):
+        probabilities = logits.float().softmax(-1).detach().cpu().numpy()
+        for row, index in enumerate(batch["indices"].tolist()):
+            length = int(batch["T"][row])
+            fig, ax = plt.subplots(figsize=(12, 3))
+            ax.imshow(probabilities[row, :length].T, origin="lower", aspect="auto", vmin=0, vmax=1)
+            ax.set_yticks(range(len(self.events) + 1), [0, *self.events])
+            ax.set_xlabel("Frame")
+            ax.set_title(self.identifiers[index])
+            path = self.output_dir / "plots" / f"{index}.jpg"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, bbox_inches="tight")
+            plt.close(fig)
 
 
 class OfflineEvaluationModule(pl.LightningModule):

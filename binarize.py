@@ -23,7 +23,7 @@ def shared_options(func):
         ),
         click.option(
             "--vocab", "vocab_only", is_flag=True, default=False, show_default=True,
-            help="Build vocabulary from metadata, save a distribution plot, and exit."
+            help="Build vocabulary from metadata, save a distribution plot when available, and exit."
         ),
         click.option(
             "--eval", "eval_mode", is_flag=True, default=False, show_default=True,
@@ -43,6 +43,7 @@ def _run_binarization(
     from preprocessing.api import (
         load_config_for_binarization, build_vocab_from_datasets, binarize_datasets
     )
+    from preprocessing.events_binarizer import VoiceEventBinarizer
     from preprocessing.phonemes_binarizer import PhonemeTimingBinarizer
     from preprocessing.texts_binarizer import TextOnlyBinarizer
 
@@ -54,6 +55,8 @@ def _run_binarization(
             binarizer_classes.append(TextOnlyBinarizer)
     elif scope == ConfigurationScope.FA_SSL:
         binarizer_classes = [TextOnlyBinarizer]
+    elif scope == ConfigurationScope.VED:
+        binarizer_classes = [VoiceEventBinarizer]
     else:
         raise ValueError(f"Unknown scope: {scope}")
 
@@ -86,6 +89,16 @@ def supervised(config, override, vocab_only, eval_mode):
         config=config, override=override,
         vocab_only=vocab_only, eval_mode=eval_mode,
         scope=ConfigurationScope.FA,
+    )
+
+
+@main.command(name="ved", help="Binarize phoneme-timing data for Voice Event Detector.")
+@shared_options
+def ved(config, override, vocab_only, eval_mode):
+    _run_binarization(
+        config=config, override=override,
+        vocab_only=vocab_only, eval_mode=eval_mode,
+        scope=ConfigurationScope.VED,
     )
 
 

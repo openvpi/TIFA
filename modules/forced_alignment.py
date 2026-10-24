@@ -76,7 +76,7 @@ class ForcedAlignmentSSLModel(nn.Module):
 
     Encodes tokens and spectrogram via a two-stream EBFEncoderBackbone with
     cross-attention, then optionally injects f0 and decodes to a reconstructed
-    spectrogram via a single-stream EBFDecoderBackbone.
+    spectrogram via a single-stream EBFBackbone.
 
     Forward signature:
         forward(spectrogram, tokens, t_mask, n_mask, f0=None, reconstruct=True)
